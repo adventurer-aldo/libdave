@@ -1,0 +1,42 @@
+name: Build libdave (old glibc)
+
+on:
+  workflow_dispatch:   # adds a manual "Run workflow" button
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04   # glibc 2.35, loads on your Debian 12 host (2.36)
+    steps:
+      - name: Install tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential cmake ninja-build git pkg-config
+          sudo apt-get install -y gcc-13 g++-13 || true
+
+      - name: Get libdave source
+        run: |
+          git clone --recursive https://github.com/discord/libdave.git
+          # if the discordrb PR pins a specific version/commit, check it out here
+
+      - name: Build
+        working-directory: libdave
+        env:
+          CC: gcc-13
+          CXX: g++-13
+        run: |
+          cmake -B build -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_SHARED_LINKER_FLAGS="-static-libstdc++ -static-libgcc"
+          cmake --build build
+
+      - name: Verify glibc requirement
+        run: |
+          so=$(find libdave/build -name 'libdave*.so' | head -1)
+          strip "$so"
+          objdump -T "$so" | grep -o 'GLIBC_[0-9.]*' | sort -uV | tail -1
+          ldd "$so"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: libdave
+          path: libdave/build/**/libdave*.so
